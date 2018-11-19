@@ -1,0 +1,72 @@
+﻿Sean DiGirolamo
+
+
+Myshell Documentation
+
+	Myshell is a simple shell implementation. It follows this basic flow of
+operation. First, it declares an ampersand flag and an arg flag which track if
+an ampersand is found in the command and if the program was executed with a
+batchfile respectively.  It then checks if it was executed with a batchfile. If
+so, it sets stdin to that file, if found. If not, it displays an error message
+and exits. Whether or not there was a batchfile, it then sets a signal handler
+which will reap any children if the program was instructed not to wait for its
+children when it recieves SIGCHLD. Myshell then sets the shell environment
+variable and shelldir environment variable, used for my convenience. It holds
+the directory containing the shell program
+	The program then begins its main body loop. If it has not been called
+with a batchfile, it prints a prompt, sets the ampersand_flag to 0, in case it
+was set to 1 beforehand, and then gets a line from stdin using a function
+read_line(). Read_line() is basically just a wrapper function for the GNU
+getline() function. It then catches the cases where the input is invalid, and
+prints an error, and the case where the user hasn’t actually entered anything,
+in which it just restarts the loop. The program then calls a function,
+commandify(), which will parse the line into an array of command segments
+separated by pipes. Command segments are arrays of strings. Commandify works by
+finding each segment of a command separated by pipes, and then calling
+parse_line_w() on each segment to make it into a new command segment.
+Parse_line_w() first calls pre_parse() on the line, replacing certain key
+characters with other things, such as ‘~’ with the users home directory, and
+the keyword “ help “ with “ more <shelldir>/readme “.  Parse_line_w() then
+parses the line into an array of strings separated by whitespace of any kind,
+including tabs, multiple spaces in a row, tabs and spaces, etc. All in all,
+commandify() will turn a line into an array of command segments, which are an
+array of strings.
+	In this next phase, myshell checks for unique phases. First, myshell
+then checks if the command is “quit” or “cd”, which have unique properties and
+must be dealt with in the main process rather than a forked process. If quit
+was done in a forked process, it would quit the forked process, not the shell,
+and if cd was done in a forked process, it would change the directory of the
+forked process, not the main shell. Therefore, they must be dealt with here.
+The shell then checks if the last string in the line is ‘&’. If it is, it sets
+the ampersand flag so that the program knows not to wait for its children to
+exit later. Myshell then checks to make sure that all programs references in
+each command segment actually exist as either a built in command or a file.  If
+not, the program will return an error and go back to the beginning of the loop.
+	The program now splits into two cases. In the first case, we have
+pipes. We can check whether or not we have pipes by counting the command
+segments in the command. If we have more than 1, than there is at least one
+pipe. Pipes are dealt with in three phases. First, we malloc data for the pipe.
+Then we iterate through each command segment, forking a new process for each
+segment. Now after the parent has finished the forking loop, the parent process
+will then close all pipe ends, and if ampersand flag was not set, wait for all
+processes to exit. Each child process will set the parent environment variable,
+and then check for any input redirection. If there are any input redirection
+symbols in the segment, they are dealt with appropriately. After this is dealt
+with, each child process will iterate through each pipe, and close any pipe
+ends that they have no use for and route its stdin and stdout to pipes where
+appropriate. After all that, the command segment is ready to execute. First, we
+call built_ins(), to execute any built in functions if they exist. If they do,
+the process will exit in this function after it finishes executing the built
+in. Otherwise, it will exit the function nicely and it will call execvp on its
+first arguments path. When it finishes executing that program, it will exit. 
+	In case 2, there are no pipes, which again, can be determined by the
+number of command segments in the command. At this point, myshell will fork
+just once. The parent will then block itself if the ampersand flag is not set.
+The child will set the parent environment variable, handle any input
+redirection by opening files, rerouting stdin and stdout, etc, and removing any
+trailing arguments, attempt to execute built in commands if they are there, and
+finally execvp to a different program if it is not a built in command. After
+the main program regains control, it will free the line, which was malloced in
+the read_line() function, and free the command, which has a number of mallocs
+in it
+
